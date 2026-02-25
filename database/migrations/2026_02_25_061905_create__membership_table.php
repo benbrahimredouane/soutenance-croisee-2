@@ -21,6 +21,8 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['user_id','colocation_id']);
+            $table->index(['colocation_id','left_at']);
+            $table->index(['user_id','left_at']);
         });
     }
 
