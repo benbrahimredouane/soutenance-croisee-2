@@ -13,6 +13,10 @@ return new class extends Migration
     {
         Schema::create('colocations', function (Blueprint $table) {
             $table->id();
+            $table->string('name');
+            $table->foreignId('owner_id')->constrained('users')->onDelete('cascade');
+            $table->enum('status',['active','cancelled'])->default('active');
+            // $table->dateTime('cancelled_at')->nullable();
             $table->timestamps();
         });
     }
