@@ -13,6 +13,9 @@ return new class extends Migration
     {
         Schema::create('invitations', function (Blueprint $table) {
             $table->id();
+            $table->string('email');
+            $table->string('token')->unique();
+            $table->foreignId('colocation_id')->constrained('colocations')->onDelete('cascade');
             $table->timestamps();
         });
     }
