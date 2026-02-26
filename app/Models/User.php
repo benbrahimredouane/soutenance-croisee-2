@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Models;
+
 use App\Models\Membership;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -21,7 +22,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
-        'password',   
+        'password',
     ];
 
     /**
@@ -47,7 +48,12 @@ class User extends Authenticatable
             'is_banned' => 'boolean',
         ];
     }
-    public function memberships(){
+    public function memberships()
+    {
         return $this->hasMany(Membership::class);
+    }
+    public function expenses()
+    {
+        return $this->hasMany(Expense::class, 'payer_id');
     }
 }
