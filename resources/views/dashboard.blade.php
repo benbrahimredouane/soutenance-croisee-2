@@ -1,17 +1,43 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('Dashboard') }}
+        <h2 class="text-xl font-semibold">
+            Dashboard
         </h2>
     </x-slot>
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900">
-                    {{ __("You're logged in!") }}
-                </div>
+    <div class="p-6">
+
+        @if (!$activeMembership)
+
+            <div class="p-4 bg-yellow-100 rounded mb-4">
+                <h3 class="font-bold mb-2">You are not in any colocation yet.</h3>
+                <p class="mb-4">Create one or join using an invitation.</p>
+
+                <a href="{{ route('colocations.create') }}"
+                   class="bg-black text-white px-4 py-2 rounded mr-2">
+                    Create Colocation
+                </a>
+
             </div>
-        </div>
+
+        @else
+
+            <div class="p-4 bg-green-100 rounded">
+                <h3 class="font-bold mb-2">
+                    Your Active Colocation:
+                </h3>
+
+                <p class="mb-4">
+                    {{ $activeMembership->colocation->name }}
+                </p>
+
+                <a href="{{ route('colocations.show', $activeMembership->colocation) }}"
+                   class="bg-black text-white px-4 py-2 rounded">
+                    Open Colocation
+                </a>
+            </div>
+
+        @endif
+
     </div>
 </x-app-layout>
