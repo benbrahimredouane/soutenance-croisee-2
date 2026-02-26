@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Models;
+use App\Models\Membership;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -45,5 +46,8 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_banned' => 'boolean',
         ];
+    }
+    public function memberships(){
+        return $this->hasMany(Membership::class);
     }
 }
