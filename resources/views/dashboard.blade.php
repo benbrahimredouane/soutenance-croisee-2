@@ -13,14 +13,20 @@
             <h3 class="font-bold mb-2">You are not in any colocation yet.</h3>
             <p class="mb-4">Create one or join using a token.</p>
 
+             
+               
+             <x-primary-button class="ms-4">
             <a href="{{ route('colocations.create') }}"
                 class="bg-black text-white px-4 py-2 rounded mr-2">
                 Create Colocation
             </a>
+            </x-primary-button>
+            <x-primary-button class="ms-4">
             <a href="{{ route('invitations.joinForm') }}"
                 class="bg-gray-700 text-white px-4 py-2 rounded">
                 Join with Token
             </a>
+             </x-primary-button>
 
         </div>
 
@@ -35,10 +41,14 @@
                 {{ $activeMembership->colocation->name }}
             </p>
 
+             <x-primary-button class="ms-4">
+                
+            
             <a href="{{ route('colocations.show', $activeMembership->colocation) }}"
-                class="bg-black text-white px-4 py-2 rounded">
+                class="">
                 Open Colocation
             </a>
+            </x-primary-button>
 
             
         </div>
