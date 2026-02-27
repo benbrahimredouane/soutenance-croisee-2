@@ -95,7 +95,7 @@ class ColocationController extends Controller
         $expensesQuery = $colocation->expenses()->with(['category', 'payer'])->orderBy('date', 'desc');
 
         if ($month !== 'all') {
-            
+
             $start = \Carbon\Carbon::createFromFormat('Y-m', $month)->startOfMonth();
             $end = (clone $start)->endOfMonth();
 
@@ -111,7 +111,10 @@ class ColocationController extends Controller
         $categories = $colocation->categories()->orderBy('name')->get();
         $calculation = $settlementService->calculate($colocation, $month);
 
-        return view('colocations.show', compact('colocation', 'members', 'categories', 'expenses', 'month', 'calculation'));
+        $settlementService->generateAndStore($colocation, $month);
+        $storedSettlements = $settlementService->getStoredSettlements($colocation, $month);
+
+        return view('colocations.show', compact('colocation', 'members', 'categories', 'expenses', 'month', 'calculation', 'storedSettlements'));
     }
 
     /**
