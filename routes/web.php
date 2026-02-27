@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\SettlementController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -47,4 +48,9 @@ Route::middleware(['auth'])->group(function () {
 
     Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])
         ->name('expenses.destroy');
+
+
+
+    Route::patch('/settlements/{settlement}/paid', [SettlementController::class, 'markPaid'])
+        ->name('settlements.paid');
 });
