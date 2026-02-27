@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Colocation;
-use Illuminate\Support\Collection;
+// use Illuminate\Support\Collection;
+use App\Models\Settlement;
+use Illuminate\Support\Facades\DB;
 
 class SettlementService
 {
@@ -57,8 +59,8 @@ class SettlementService
         });
 
         // Split creditors and debtors
-        $creditors = $balances->filter(fn ($b) => $b['balance'] > 0)->values();
-        $debtors   = $balances->filter(fn ($b) => $b['balance'] < 0)->values();
+        $creditors = $balances->filter(fn($b) => $b['balance'] > 0)->values();
+        $debtors   = $balances->filter(fn($b) => $b['balance'] < 0)->values();
 
         $settlements = collect();
 
@@ -89,5 +91,43 @@ class SettlementService
             'total' => $totalExpenses,
             'share' => round($individualShare, 2),
         ];
+    }
+
+
+    public function generateAndStore(Colocation $colocation, string $month = 'all'): void
+    {
+        $result = $this->calculate($colocation, $month);
+        $computed = $result['settlements'];
+
+        DB::transaction(function () use ($colocation, $month, $computed) {
+
+
+            Settlement::where('colocation_id', $colocation->id)
+                ->where('month', $month)
+                ->where('is_paid', false)
+                ->delete();
+
+
+            foreach ($computed as $s) {
+                Settlement::create([
+                    'colocation_id' => $colocation->id,
+                    'from_user_id' => $s['from']->id,
+                    'to_user_id' => $s['to']->id,
+                    'amount' => $s['amount'],
+                    'is_paid' => false,
+                    'paid_at' => null,
+                    'month' => $month,
+                ]);
+            }
+        });
+    }
+    public function getStoredSettlements(Colocation $colocation, string $month = 'all')
+    {
+        return $colocation->settlements()
+            ->where('month', $month)
+            ->with(['fromUser', 'toUser'])
+            ->orderBy('is_paid')
+            ->orderByDesc('amount')
+            ->get();
     }
 }
