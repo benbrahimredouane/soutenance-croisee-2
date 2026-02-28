@@ -30,6 +30,21 @@
             @endforeach
         </ul>
     </div>
+    @if ($colocation->status === 'active')
+    @php
+    $currentMember = $members->firstWhere('id', auth()->id());
+    @endphp
+
+    @if ($currentMember && $currentMember->pivot->role !== 'owner')
+    <form method="POST" action="{{ route('colocations.leave', $colocation) }}" class="mt-4">
+        @csrf
+        @method('PATCH')
+        <button class="bg-red-600 text-white px-4 py-2 rounded">
+            Leave Colocation
+        </button>
+    </form>
+    @endif
+    @endif
     {{-- Success message --}}
     @if (session('success'))
     <div class="p-3 mb-4 bg-green-100 text-green-800 rounded">
@@ -187,9 +202,9 @@
                     @csrf
                     @method('PATCH')
                     <x-primary-button class="bg-green-600 text-white px-3 py-1 rounded">
-                   
-                            Mark paid
-                        
+
+                        Mark paid
+
                     </x-primary-button>
                 </form>
                 @endif
