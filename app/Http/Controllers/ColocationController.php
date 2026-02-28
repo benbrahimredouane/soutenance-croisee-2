@@ -92,7 +92,7 @@ public function show(Colocation $colocation, SettlementService $settlementServic
 
     $month = request('month', 'all');
 
-    // Guard month to avoid Carbon errors
+   
     if ($month !== 'all' && !preg_match('/^\d{4}-\d{2}$/', $month)) {
         $month = 'all';
     }
@@ -180,4 +180,45 @@ public function show(Colocation $colocation, SettlementService $settlementServic
         return redirect()->route('dashboard')
             ->with('success', 'Colocation cancelled successfully.');
     }
+    public function leave(Colocation $colocation, SettlementService $settlementService)
+{
+    $user = auth()->user();
+
+    $membership = $colocation->members()
+        ->where('users.id', $user->id)
+        ->wherePivotNull('left_at')
+        ->first();
+
+    if (! $membership) {
+        abort(403);
+    }
+
+   
+    if ($membership->pivot->role === 'owner') {
+        return back()->withErrors(['error' => 'Owner cannot leave the colocation.']);
+    }
+
+    $summaries = $settlementService->getMemberSummaries($colocation, 'all');
+
+    $balance = (float) $summaries[$user->id]['balance'];
+
+    
+    if ($balance < 0) {
+        $user->decrement('reputation_score');
+    } else {
+        $user->increment('reputation_score');
+    }
+
+    
+    $colocation->members()
+        ->updateExistingPivot($user->id, [
+            'left_at' => now(),
+        ]);
+
+    
+    $settlementService->refreshPendingSettlements($colocation, 'all');
+
+    return redirect()->route('dashboard')
+        ->with('success', 'You have left the colocation.');
+}
 }
