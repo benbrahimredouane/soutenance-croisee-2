@@ -79,43 +79,61 @@ class ColocationController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Colocation $colocation, SettlementService $settlementService)
-    {
-        $isMember = $colocation->members()
-            ->where('users.id', auth()->id())
-            ->wherePivotNull('left_at')
-            ->exists();
+public function show(Colocation $colocation, SettlementService $settlementService)
+{
+    $isMember = $colocation->members()
+        ->where('users.id', auth()->id())
+        ->wherePivotNull('left_at')
+        ->exists();
 
-        if (! $isMember) {
-            abort(403);
-        }
-
-        $month = request('month', 'all');
-
-        $expensesQuery = $colocation->expenses()->with(['category', 'payer'])->orderBy('date', 'desc');
-
-        if ($month !== 'all') {
-
-            $start = \Carbon\Carbon::createFromFormat('Y-m', $month)->startOfMonth();
-            $end = (clone $start)->endOfMonth();
-
-            $expensesQuery->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
-        }
-
-        $expenses = $expensesQuery->get();
-
-        $members = $colocation->members()
-            ->wherePivotNull('left_at')
-            ->get();
-
-        $categories = $colocation->categories()->orderBy('name')->get();
-        $calculation = $settlementService->calculate($colocation, $month);
-
-        $settlementService->generateAndStore($colocation, $month);
-        $storedSettlements = $settlementService->getStoredSettlements($colocation, $month);
-
-        return view('colocations.show', compact('colocation', 'members', 'categories', 'expenses', 'month', 'calculation', 'storedSettlements'));
+    if (! $isMember) {
+        abort(403);
     }
+
+    $month = request('month', 'all');
+
+    // Guard month to avoid Carbon errors
+    if ($month !== 'all' && !preg_match('/^\d{4}-\d{2}$/', $month)) {
+        $month = 'all';
+    }
+
+    $expensesQuery = $colocation->expenses()
+        ->with(['category', 'payer'])
+        ->orderBy('date', 'desc');
+
+    if ($month !== 'all') {
+        $start = \Carbon\Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        $end = (clone $start)->endOfMonth();
+        $expensesQuery->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
+    }
+
+    $expenses = $expensesQuery->get();
+
+    $members = $colocation->members()
+        ->wherePivotNull('left_at')
+        ->get();
+
+    $categories = $colocation->categories()->orderBy('name')->get();
+
+    $summaries = $settlementService->getMemberSummaries($colocation, $month);
+
+    $settlements = $colocation->settlements()
+        ->where('month', $month)
+        ->with(['fromUser', 'toUser'])
+        ->orderBy('is_paid')
+        ->orderByDesc('amount')
+        ->get();
+
+    return view('colocations.show', compact(
+        'colocation',
+        'members',
+        'categories',
+        'expenses',
+        'month',
+        'summaries',
+        'settlements'
+    ));
+}
 
     /**
      * Show the form for editing the specified resource.
