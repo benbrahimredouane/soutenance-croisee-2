@@ -3,131 +3,207 @@
 namespace App\Services;
 
 use App\Models\Colocation;
-// use Illuminate\Support\Collection;
 use App\Models\Settlement;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 
 class SettlementService
 {
-    public function calculate(Colocation $colocation, ?string $month = null): array
+    /**
+     * Returns per-member summary for UI:
+     * paid / share / balance
+     */
+    public function getMemberSummaries(Colocation $colocation, string $month = 'all'): array
     {
-        $members = $colocation->members()
-            ->wherePivotNull('left_at')
-            ->get();
+        $state = $this->buildStateInCents($colocation, $month);
 
-        $expensesQuery = $colocation->expenses();
-
-        if ($month && $month !== 'all') {
-            $start = \Carbon\Carbon::createFromFormat('Y-m', $month)->startOfMonth();
-            $end = (clone $start)->endOfMonth();
-
-            $expensesQuery->whereBetween('date', [
-                $start->toDateString(),
-                $end->toDateString(),
-            ]);
-        }
-
-        $expenses = $expensesQuery->get();
-
-        $totalExpenses = $expenses->sum('amount');
-        $memberCount = $members->count();
-
-        if ($memberCount === 0) {
-            return [
-                'balances' => collect(),
-                'settlements' => collect(),
-                'total' => 0,
-                'share' => 0,
+        $summaries = [];
+        foreach ($state['member_ids'] as $memberId) {
+            $summaries[$memberId] = [
+                'paid' => $this->fromCents($state['paid'][$memberId]),
+                'share' => $this->fromCents($state['share'][$memberId]),
+                'balance' => $this->fromCents($state['balances'][$memberId]),
             ];
         }
 
-        $individualShare = $totalExpenses / $memberCount;
-
-        // Calculate balances
-        $balances = $members->map(function ($member) use ($expenses, $individualShare) {
-            $paid = $expenses
-                ->where('payer_id', $member->id)
-                ->sum('amount');
-
-            $balance = $paid - $individualShare;
-
-            return [
-                'user' => $member,
-                'paid' => $paid,
-                'balance' => round($balance, 2),
-            ];
-        });
-
-        // Split creditors and debtors
-        $creditors = $balances->filter(fn($b) => $b['balance'] > 0)->values();
-        $debtors   = $balances->filter(fn($b) => $b['balance'] < 0)->values();
-
-        $settlements = collect();
-
-        foreach ($debtors as &$debtor) {
-            foreach ($creditors as &$creditor) {
-                if ($debtor['balance'] == 0) continue;
-                if ($creditor['balance'] == 0) continue;
-
-                $amount = min(
-                    abs($debtor['balance']),
-                    $creditor['balance']
-                );
-
-                $settlements->push([
-                    'from' => $debtor['user'],
-                    'to' => $creditor['user'],
-                    'amount' => round($amount, 2),
-                ]);
-
-                $debtor['balance'] += $amount;
-                $creditor['balance'] -= $amount;
-            }
-        }
-
-        return [
-            'balances' => $balances,
-            'settlements' => $settlements,
-            'total' => $totalExpenses,
-            'share' => round($individualShare, 2),
-        ];
+        return $summaries;
     }
 
-
-    public function generateAndStore(Colocation $colocation, string $month = 'all'): void
+    /**
+     * Deletes old UNPAID settlements for the month and regenerates them
+     * from the current balances (which already include paid settlements).
+     */
+    public function refreshPendingSettlements(Colocation $colocation, string $month = 'all'): void
     {
-        $result = $this->calculate($colocation, $month);
-        $computed = $result['settlements'];
+        $state = $this->buildStateInCents($colocation, $month);
+        $balances = $state['balances'];
 
-        DB::transaction(function () use ($colocation, $month, $computed) {
+        DB::transaction(function () use ($colocation, $month, $balances): void {
 
-
-            Settlement::where('colocation_id', $colocation->id)
+            // Delete only UNPAID settlements for this month (pending)
+            Settlement::query()
+                ->where('colocation_id', $colocation->id)
                 ->where('month', $month)
                 ->where('is_paid', false)
                 ->delete();
 
+            $creditors = [];
+            $debtors = [];
 
-            foreach ($computed as $s) {
+            foreach ($balances as $userId => $balanceCents) {
+                if ($balanceCents > 0) {
+                    $creditors[] = ['user_id' => $userId, 'amount' => $balanceCents];
+                } elseif ($balanceCents < 0) {
+                    $debtors[] = ['user_id' => $userId, 'amount' => abs($balanceCents)];
+                }
+            }
+
+            // Largest first helps produce simpler settlements
+            usort($creditors, fn ($a, $b) => $b['amount'] <=> $a['amount']);
+            usort($debtors, fn ($a, $b) => $b['amount'] <=> $a['amount']);
+
+            $di = 0;
+            $ci = 0;
+
+            while (isset($debtors[$di], $creditors[$ci])) {
+                $amountToSettle = min($debtors[$di]['amount'], $creditors[$ci]['amount']);
+
+                if ($amountToSettle <= 0) {
+                    break;
+                }
+
                 Settlement::create([
                     'colocation_id' => $colocation->id,
-                    'from_user_id' => $s['from']->id,
-                    'to_user_id' => $s['to']->id,
-                    'amount' => $s['amount'],
+                    'from_user_id' => $debtors[$di]['user_id'],   // debtor
+                    'to_user_id' => $creditors[$ci]['user_id'],   // creditor
+                    'amount' => $this->fromCents($amountToSettle),
                     'is_paid' => false,
                     'paid_at' => null,
                     'month' => $month,
                 ]);
+
+                $debtors[$di]['amount'] -= $amountToSettle;
+                $creditors[$ci]['amount'] -= $amountToSettle;
+
+                if ($debtors[$di]['amount'] === 0) $di++;
+                if ($creditors[$ci]['amount'] === 0) $ci++;
             }
         });
     }
-    public function getStoredSettlements(Colocation $colocation, string $month = 'all')
+
+    /**
+     * Core: compute balances in cents:
+     * balance = paid - share, then apply PAID settlements to reduce debt.
+     */
+    private function buildStateInCents(Colocation $colocation, string $month = 'all'): array
     {
-        return $colocation->settlements()
+        // Active members in this colocation
+        $memberIds = $colocation->members()
+            ->wherePivotNull('left_at')
+            ->pluck('users.id')
+            ->all();
+
+        if ($memberIds === []) {
+            return [
+                'member_ids' => [],
+                'paid' => [],
+                'share' => [],
+                'balances' => [],
+            ];
+        }
+
+        // Init arrays
+        $paid = $share = $balances = [];
+        foreach ($memberIds as $id) {
+            $paid[$id] = 0;
+            $share[$id] = 0;
+            $balances[$id] = 0;
+        }
+
+        // Get expenses filtered by month
+        $expensesQuery = $colocation->expenses()->getQuery()->select(['payer_id', 'amount', 'date']);
+
+        if ($month !== 'all') {
+            // Validate month format to avoid exceptions
+            if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+                $month = 'all';
+            } else {
+                $start = \Carbon\Carbon::createFromFormat('Y-m', $month)->startOfMonth()->toDateString();
+                $end = \Carbon\Carbon::createFromFormat('Y-m', $month)->endOfMonth()->toDateString();
+                $expensesQuery->whereBetween('date', [$start, $end]);
+            }
+        }
+
+        $expenses = $expensesQuery->get();
+
+        // Total in cents
+        $totalCents = 0;
+        foreach ($expenses as $expense) {
+            $totalCents += $this->toCents($expense->amount);
+        }
+
+        // Equal split share per member (in cents) with remainder distribution
+        $count = count($memberIds);
+        $baseShare = intdiv($totalCents, $count);
+        $remainder = $totalCents % $count;
+
+        // Deterministic: distribute remainder to first members (by id order)
+        sort($memberIds);
+
+        foreach ($memberIds as $idx => $memberId) {
+            $memberShare = $baseShare + ($idx < $remainder ? 1 : 0);
+            $share[$memberId] = $memberShare;
+            $balances[$memberId] -= $memberShare; // everyone starts owing their share
+        }
+
+        // Add what each member paid
+        $activeLookup = array_flip($memberIds);
+
+        foreach ($expenses as $expense) {
+            $amountCents = $this->toCents($expense->amount);
+
+            if (isset($activeLookup[$expense->payer_id])) {
+                $paid[$expense->payer_id] += $amountCents;
+                $balances[$expense->payer_id] += $amountCents;
+            }
+        }
+
+        // Apply PAID settlements (payments reduce debt)
+        $paidSettlements = Settlement::query()
+            ->where('colocation_id', $colocation->id)
             ->where('month', $month)
-            ->with(['fromUser', 'toUser'])
-            ->orderBy('is_paid')
-            ->orderByDesc('amount')
-            ->get();
+            ->where('is_paid', true)
+            ->get(['from_user_id', 'to_user_id', 'amount']);
+
+        foreach ($paidSettlements as $st) {
+            // ignore if someone left
+            if (!isset($activeLookup[$st->from_user_id]) || !isset($activeLookup[$st->to_user_id])) {
+                continue;
+            }
+
+            $amt = $this->toCents($st->amount);
+
+            // debtor paid -> less debt
+            $balances[$st->from_user_id] += $amt;
+            // creditor received -> less credit
+            $balances[$st->to_user_id] -= $amt;
+        }
+
+        return [
+            'member_ids' => $memberIds,
+            'paid' => $paid,
+            'share' => $share,
+            'balances' => $balances,
+        ];
+    }
+
+    private function toCents(float|string $amount): int
+    {
+        return (int) round(((float) $amount) * 100);
+    }
+
+    private function fromCents(int $cents): string
+    {
+        return number_format($cents / 100, 2, '.', '');
     }
 }
