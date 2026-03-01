@@ -7,14 +7,13 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\SettlementController;
+use App\Http\Controllers\AdminController;
 
 Route::get('/', function () {
     return view('welcome');
 });
 
-// Route::get('/dashboard', function () {
-//     return view('dashboard');
-// })->middleware(['auth', 'verified'])->name('dashboard');
+
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth'])
     ->name('dashboard');
@@ -53,4 +52,22 @@ Route::middleware(['auth'])->group(function () {
 
     Route::patch('/settlements/{settlement}/paid', [SettlementController::class, 'markPaid'])
         ->name('settlements.paid');
+
+    Route::patch(
+        '/colocations/{colocation}/leave',
+        [ColocationController::class, 'leave']
+    )->name('colocations.leave');
+    Route::patch(
+        '/colocations/{colocation}/members/{user}/remove',
+        [ColocationController::class, 'removeMember']
+    )->name('colocations.members.remove');
+
+    
+
+Route::middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('/admin', [AdminController::class, 'index'])->name('admin.dashboard');
+    Route::patch('/admin/users/{user}/toggle-ban', [AdminController::class, 'toggleBan'])->name('admin.users.toggleBan');
 });
+
+});
+
