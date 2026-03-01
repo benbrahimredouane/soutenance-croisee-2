@@ -39,6 +39,7 @@ class ExpenseController extends Controller
         }
 
         $colocation->expenses()->create($data);
+        app(\App\Services\SettlementService::class)->refreshPendingSettlements($colocation, request('month', 'all'));
 
         return back()->with('success', 'Expense added.');
     }
@@ -58,6 +59,8 @@ class ExpenseController extends Controller
         }
 
         $expense->delete();
+        app(\App\Services\SettlementService::class)
+            ->refreshPendingSettlements($colocation, request('month', 'all'));
 
         return back()->with('success', 'Expense deleted.');
     }
