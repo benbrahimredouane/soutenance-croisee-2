@@ -14,17 +14,11 @@ return new class extends Migration
     Schema::create('settlements', function (Blueprint $table) {
         $table->id();
 
-        $table->foreignId('colocation_id')
-            ->constrained()
-            ->cascadeOnDelete();
+        $table->foreignId('colocation_id')->constrained()->cascadeOnDelete();
 
-        $table->foreignId('from_user_id')
-            ->constrained('users')
-            ->cascadeOnDelete();
+        $table->foreignId('from_user_id')->constrained('users')->cascadeOnDelete();
 
-        $table->foreignId('to_user_id')
-            ->constrained('users')
-            ->cascadeOnDelete();
+        $table->foreignId('to_user_id')->constrained('users')->cascadeOnDelete();
 
         $table->decimal('amount', 10, 2);
 
