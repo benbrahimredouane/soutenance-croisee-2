@@ -26,6 +26,10 @@ class User extends Authenticatable
         'email',
         'password',
     ];
+    protected $casts = [
+    
+    'is_banned' => 'boolean',
+];
 
     /**
      * The attributes that should be hidden for serialization.
