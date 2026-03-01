@@ -56,7 +56,6 @@ class InvitationController extends Controller
         return view('invitations.join');
     }
 
-    // Join by token
     public function join(Request $request)
     {
         $user = $request->user();
@@ -67,21 +66,25 @@ class InvitationController extends Controller
 
         $invitation = Invitation::where('token', $data['token'])->first();
 
-        if (!$invitation) {
+        if (! $invitation) {
             return back()->withErrors(['token' => 'Invalid token.']);
         }
 
-        // Email must match the logged-in user
+      
         $invitedEmail = strtolower(trim($invitation->email));
         $userEmail    = strtolower(trim($user->email));
 
         if ($invitedEmail !== $userEmail) {
             return back()->withErrors(['token' => 'This token is not for your email address.']);
         }
-        
-      
 
-        // Rule: only one active colocation per user
+        $colocation = $invitation->colocation;
+
+        if (! $colocation || $colocation->status !== 'active') {
+            return back()->withErrors(['token' => 'This colocation is not active.']);
+        }
+
+       
         $hasActiveMembership = $user->memberships()
             ->whereNull('left_at')
             ->whereHas('colocation', function ($q) {
@@ -93,21 +96,20 @@ class InvitationController extends Controller
             return back()->withErrors(['token' => 'You already have an active colocation.']);
         }
 
-        $colocation = $invitation->colocation;
-
-        if ($colocation->status !== 'active') {
-            return back()->withErrors(['token' => 'This colocation is not active.']);
-        }
-
         DB::transaction(function () use ($user, $colocation, $invitation) {
-            Membership::create([
-                'user_id' => $user->id,
-                'colocation_id' => $colocation->id,
-                'role' => 'member',
-                'left_at' => null,
-            ]);
 
-            
+            Membership::updateOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'colocation_id' => $colocation->id,
+                ],
+                [
+                    'role' => 'member',
+                    'left_at' => null,
+                ]
+            );
+
+           
             $invitation->delete();
         });
 
@@ -115,9 +117,9 @@ class InvitationController extends Controller
             ->with('success', 'You joined the colocation!');
     }
 
-    private function ensureOwner(Colocation $colocation): void
+    private function ensureOwner(Colocation $colocation)
     {
-        // simplest check: owner_id
+
         if ($colocation->owner_id !== auth()->id()) {
             abort(403);
         }
