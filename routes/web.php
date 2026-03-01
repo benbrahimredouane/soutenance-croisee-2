@@ -8,6 +8,7 @@ use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\SettlementController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\CategoryController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -67,6 +68,16 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/admin', [AdminController::class, 'index'])->name('admin.dashboard');
     Route::patch('/admin/users/{user}/toggle-ban', [AdminController::class, 'toggleBan'])->name('admin.users.toggleBan');
+});
+
+
+
+Route::middleware(['auth'])->group(function () {
+    Route::post('/colocations/{colocation}/categories', [CategoryController::class, 'store'])
+        ->name('categories.store');
+
+    Route::delete('/colocations/{colocation}/categories/{category}', [CategoryController::class, 'destroy'])
+        ->name('categories.destroy');
 });
 
 });
