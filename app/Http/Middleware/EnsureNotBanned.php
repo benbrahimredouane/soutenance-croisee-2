@@ -14,17 +14,23 @@ class EnsureNotBanned
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
     public function handle($request, \Closure $next)
-{
-    if (auth()->check() && auth()->user()->is_banned) {
-        auth()->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+    {
+        if (auth()->check()) {
+            
+            $user = auth()->user();
+            $user->refresh();
 
-        return redirect()->route('login')->withErrors([
-            'email' => 'Your account has been banned.',
-        ]);
+            if ($user->is_banned) {
+                auth()->logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                return redirect()->route('login')->withErrors([
+                    'email' => 'Your account has been banned.',
+                ]);
+            }
+        }
+
+        return $next($request);
     }
-
-    return $next($request);
-}
 }
