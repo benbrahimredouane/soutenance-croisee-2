@@ -20,15 +20,15 @@ class AdminController extends Controller
     }
 
     public function toggleBan(User $user)
-    {
-        if ($user->id === auth()->id()) {
-            return back()->withErrors(['error' => 'You cannot ban yourself.']);
-        }
-
-        $user->update([
-            'is_banned' => ! $user->is_banned,
-        ]);
-
-        return back()->with('success', 'User ban status updated.');
+{
+    if ($user->id === auth()->id()) {
+        return back()->withErrors(['error' => 'You cannot ban yourself.']);
     }
+
+    $user->is_banned = ! (bool) $user->is_banned;
+    $user->save();
+    $user->refresh(); 
+
+    return back()->with('success', $user->is_banned ? 'User banned.' : 'User unbanned.');
+}
 }
