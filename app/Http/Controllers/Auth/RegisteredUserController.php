@@ -46,7 +46,7 @@ public function store(Request $request): RedirectResponse
         'password' => Hash::make($request->password),
     ]);
 
-    // First user becomes global admin
+   
     if (User::count() === 1) {
         Role::firstOrCreate(['name' => 'admin'], ['guard_name' => 'web']);
         $user->assignRole('admin');
@@ -56,7 +56,7 @@ public function store(Request $request): RedirectResponse
 
     Auth::login($user);
 
-    // Optional: redirect admin to /admin right after registration too
+
     if ($user->hasRole('admin')) {
         return redirect()->route('admin.dashboard');
     }
