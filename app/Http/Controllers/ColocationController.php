@@ -7,6 +7,7 @@ use App\Models\Colocation;
 use App\Models\Membership;
 use Illuminate\Support\Facades\DB;
 use App\Services\SettlementService;
+use App\Models\Settlement;
 
 
 class ColocationController extends Controller
@@ -220,5 +221,79 @@ public function show(Colocation $colocation, SettlementService $settlementServic
 
     return redirect()->route('dashboard')
         ->with('success', 'You have left the colocation.');
+}
+public function removeMember(Colocation $colocation, User $user, SettlementService $settlementService)
+{
+    $ownerId = auth()->id();
+
+    if ($colocation->owner_id !== $ownerId) {
+        abort(403);
+    }
+
+    // cannot remove owner
+    if ($user->id === $ownerId) {
+        return back()->withErrors(['error' => 'Owner cannot remove themselves.']);
+    }
+
+    // must be active member
+    $membership = $colocation->members()
+        ->where('users.id', $user->id)
+        ->wherePivotNull('left_at')
+        ->first();
+
+    if (! $membership) {
+        return back()->withErrors(['error' => 'User is not an active member.']);
+    }
+
+    $month = request('month', 'all');
+
+    // compute balances for debt check (ALL months is usually what you want for reputation)
+    $summariesAll = $settlementService->getMemberSummaries($colocation, 'all');
+    $balanceAll = isset($summariesAll[$user->id]) ? (float)$summariesAll[$user->id]['balance'] : 0.0;
+
+    DB::transaction(function () use ($colocation, $user, $ownerId, $balanceAll, $month) {
+
+        // Reputation of removed member
+        if ($balanceAll < 0) {
+            $user->decrement('reputation_score');
+        } else {
+            $user->increment('reputation_score');
+        }
+
+        $pending = Settlement::query()
+            ->where('colocation_id', $colocation->id)
+            ->where('month', $month)
+            ->where('is_paid', false)
+            ->where('from_user_id', $user->id)
+            ->get();
+
+        foreach ($pending as $st) {
+            // Owner pays creditor (record as paid to reduce owner's balance)
+            Settlement::create([
+                'colocation_id' => $colocation->id,
+                'from_user_id' => $ownerId,
+                'to_user_id' => $st->to_user_id,
+                'amount' => $st->amount,
+                'is_paid' => true,
+                'paid_at' => now(),
+                'month' => $st->month,
+            ]);
+
+            // Mark member's debt as paid (clears their debt)
+            $st->update([
+                'is_paid' => true,
+                'paid_at' => now(),
+            ]);
+        }
+
+        
+        $colocation->members()
+            ->updateExistingPivot($user->id, ['left_at' => now()]);
+    });
+
+    // Refresh pending after changes 
+    $settlementService->refreshPendingSettlements($colocation, $month);
+
+    return back()->with('success', 'Member removed.');
 }
 }
