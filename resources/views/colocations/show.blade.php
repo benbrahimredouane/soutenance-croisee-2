@@ -23,9 +23,20 @@
 
         <ul class="list-disc ml-5 mt-3">
             @foreach ($members as $member)
-            <li>
-                {{ $member->name }}
-                <span class="text-gray-600">({{ $member->pivot->role }})</span>
+            <li class="flex items-center justify-between">
+                <div>
+                    {{ $member->name }}
+                    <span class="text-gray-600">({{ $member->pivot->role }})</span>
+                </div>
+
+                @if ($colocation->owner_id === auth()->id() && $member->id !== auth()->id() && $colocation->status === 'active')
+                <form method="POST" action="{{ route('colocations.members.remove', [$colocation, $member]) }}"
+                    onsubmit="return confirm('Remove this member?')">
+                    @csrf
+                    @method('PATCH')
+                    <button class="text-red-600">Remove</button>
+                </form>
+                @endif
             </li>
             @endforeach
         </ul>
