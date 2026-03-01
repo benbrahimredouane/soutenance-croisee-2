@@ -27,6 +27,7 @@ class SettlementController extends Controller
                 'paid_at' => now(),
             ]);
         }
+        app(\App\Services\SettlementService::class)->refreshPendingSettlements($settlement->colocation, $settlement->month);
 
         return back()->with('success', 'Marked as paid.');
     }
